@@ -21,7 +21,7 @@
       "main": "dist-electron/main.js"
     },
     "asar": true,
-    "buildVersion": "0.1.1.1",
+    "buildVersion": "0.1.2.0",
     "win": {
       "target": [
         "appx",
