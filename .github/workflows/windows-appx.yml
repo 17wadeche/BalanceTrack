@@ -19,7 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -29,6 +28,10 @@ jobs:
         run: npm ci
       - name: Build icons/assets
         run: npm run assets:win
+      - name: Build web (Vite)
+        run: npm run build:web
+      - name: Build Electron (tsc)
+        run: npm run build:electron
       - name: Disable code signing
         run: |
           echo "CSC_LINK=" >> $env:GITHUB_ENV
