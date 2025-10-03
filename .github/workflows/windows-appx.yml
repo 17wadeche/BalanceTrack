@@ -13,6 +13,7 @@ jobs:
   build-appx:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         arch: [ x64, arm64 ]
     steps:
