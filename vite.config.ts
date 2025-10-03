@@ -1,20 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? './' : '/',
   build: {
-    outDir: 'web',       // <— was "dist"
-    emptyOutDir: true
+    outDir: 'web',
+    emptyOutDir: true,
   },
   plugins: [
     react(),
     VitePWA({
+      injectRegister: null,
       registerType: 'autoUpdate',
       workbox: {
         globDirectory: 'web',
         globPatterns: ['**/*.{js,css,html}'],
-        globIgnores: ['sw.js', 'workbox-*.js']
-      }
-    })
-  ]
-});
+        globIgnores: ['sw.js', 'workbox-*.js'],
+      },
+    }),
+  ],
+}));

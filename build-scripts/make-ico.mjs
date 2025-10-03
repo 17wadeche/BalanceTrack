@@ -24,7 +24,7 @@ const appxLogos = [
   // Optional but recommended:
   { name: "Square71x71Logo.png",   size: 71 },
   { name: "Wide310x150Logo.png",   size: 310, height: 150 },
-  { name: "Square310x310Logo.png", size: 310 },
+  { name: "Square300x300Logo.png", size: 300 },
 ];
 
 async function ensureDirs() {

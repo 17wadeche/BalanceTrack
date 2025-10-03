@@ -3,7 +3,6 @@
   "description": "Modern finance tracking",
   "author": "Chey Wade",
   "version": "0.1.1",
-  "type": "module",
   "build": {
     "appId": "com.yourcompany.balancetrack",
     "productName": "BalanceTrack",
