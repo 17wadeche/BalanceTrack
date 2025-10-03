@@ -12,7 +12,6 @@ out/
 build/
 coverage/
 electron/
-public/
 release-msix/
 web/
 *.log
