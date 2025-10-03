@@ -1,0 +1,82 @@
+{
+  "name": "BalanceTrack",
+  "description": "Modern finance tracking",
+  "author": "Chey Wade",
+  "version": "0.1.1",
+  "type": "module",
+  "build": {
+    "appId": "com.yourcompany.balancetrack",
+    "productName": "BalanceTrack",
+    "directories": {
+      "output": "release-msix",
+      "buildResources": "build"
+    },
+    "files": [
+      "web/**",
+      "dist-electron/**",
+      "package.json",
+      "!node_modules/.cache"
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
+    "asar": true,
+    "buildVersion": "0.1.1.1",
+    "win": {
+      "target": [
+        "appx",
+        "msi",
+        "dir"
+      ],
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "signingHashAlgorithms": ["sha256"],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
+    },
+    "appx": {
+      "identityName": "CheyWade.BalanceTrack",
+      "publisher": "CN=04BDFC80-F0B9-4C9A-9BFA-3EFAFC84CDDC",
+      "displayName": "BalanceTrack",
+      "publisherDisplayName": "Chey Wade",
+      "backgroundColor": "#0f172a",
+      "languages": [
+        "en-US"
+      ]
+    }
+  },
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "clean": "powershell -NoProfile -ExecutionPolicy Bypass Remove-Item -Recurse -Force .\\web, .\\dist-electron, .\\release -ErrorAction SilentlyContinue",
+    "build:web": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "pack:dir": "electron-builder --win --dir",
+    "dist:msi": "electron-builder --win msi",
+    "assets:win": "node build-scripts/make-ico.mjs",
+    "dist:msix": "npm run assets:win && electron-builder --win appx"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.4.47",
+    "rimraf": "^6.0.1",
+    "sharp": "^0.34.4",
+    "tailwindcss": "^3.4.14",
+    "to-ico": "^1.1.5",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^0.20.5",
+    "wait-on": "^9.0.1"
+  }
+}
