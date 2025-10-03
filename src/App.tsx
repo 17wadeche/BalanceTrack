@@ -9,11 +9,19 @@ const C = (v: number, ccy: string) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const monthKey = (iso: string) => iso.slice(0, 7);
 const clamp = (n: number, min = 0, max = 100) => Math.max(min, Math.min(max, n));
-const addDays = (iso: string, days: number) => { const d = new Date(iso); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
+const addDays = (iso: string, days: number) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+};
 const startOfMonth = (iso: string) => iso.slice(0,7) + "-01";
 const nextMonth = (iso: string) => addMonths(startOfMonth(iso), 1);
 const inRange = (d: string, from: string, toExclusive: string) => d >= from && d < toExclusive;
-const addMonths = (iso: string, months: number) => { const d = new Date(iso); d.setMonth(d.getMonth()+months); return d.toISOString().slice(0,10); };
+const addMonths = (iso: string, months: number) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 + months, d));
+  return dt.toISOString().slice(0, 10);
+};
 const GOAL_COLORS = [ "#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#84cc16", "#06b6d4", "#e11d48"];
 const CAT_COLORS = [
   "#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
@@ -242,6 +250,9 @@ export default function App() {
   const [recurrings, setRecurrings] = useState<Recurring[]>(seed.recurrings);
   const [goals, setGoals] = useState<Goal[]>(seed.goals);
   const [scenarios, setScenarios] = useState<Scenario[]>(seed.scenarios);
+  const [sortBy, setSortBy] = useState<"date"|"amount"|"description"|"category">("date");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("desc");
+  const [catFilter, setCatFilter] = useState<string>("");
   const [scopeBusiness, setScopeBusiness] = useState(false);
   const [tab, setTab] = useState<"overview"|"transactions"|"budgets"|"recurring"|"accounts"|"goals"|"settings"|"planner">("overview");
   const [filterText, setFilterText] = useState("");
@@ -253,6 +264,11 @@ export default function App() {
     tipBg: dark ? "#0f172a" : "#ffffff",   // tooltip background
     tipBd: dark ? "#334155" : "#e5e7eb",   // tooltip border
   }), [dark]);
+  const catColorMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    categoriesList.forEach((c, i) => { m[c] = CAT_COLORS[i % CAT_COLORS.length]; });
+    return m;
+  }, [categoriesList]);
   type RangeKey = "week"|"month"|"3m"|"year";
   const startOfWeek = (iso: string) => {
     const d = new Date(iso);
@@ -326,6 +342,29 @@ export default function App() {
     () => (accountFilter ? scopedTxns.filter(t => t.account === accountFilter) : scopedTxns),
     [scopedTxns, accountFilter]
   );
+  const visibleTxns = useMemo(() => {
+    let list = (accountFilter ? scopedTxns.filter(t => t.account === accountFilter) : scopedTxns)
+      .filter(t => !catFilter || t.category === catFilter);
+    const f = filterText.trim().toLowerCase();
+    if (f) {
+      list = list.filter(t => {
+        const acct = accounts.find(a => a.id === t.account)?.name || "";
+        const tags = (t.tags || []).join(",");
+        return [t.description, t.category, acct, tags, t.note || ""].some(s => String(s).toLowerCase().includes(f));
+      });
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "date":        return (a.date.localeCompare(b.date)) * dir;
+        case "amount":      return (a.amount - b.amount) * dir;
+        case "description": return (a.description.localeCompare(b.description)) * dir;
+        case "category":    return (a.category.localeCompare(b.category)) * dir;
+        default:            return 0;
+      }
+    });
+    return list;
+  }, [scopedTxns, accountFilter, catFilter, filterText, accounts, sortBy, sortDir]);
   const currencyForAccount = (id: string) => accounts.find(a => a.id === id)?.currency || baseCurrency;
   const toBase = (amount: number, ccy: string) => amount * (rates[ccy] ?? 1) / (rates[baseCurrency] ?? 1);
   const monthStr = todayISO().slice(0, 7);
@@ -361,9 +400,10 @@ export default function App() {
       const v = toBase(t.amount, currencyForAccount(t.account));
       if (t.amount >= 0) map[k].income += v; else map[k].expense += Math.abs(v);
     }
-    return Object.entries(map)
-      .sort(([a],[b])=> a.localeCompare(b))
-      .map(([m, v]) => ({ month: m, ...v, net: v.income - v.expense }));
+    return monthsBetween(ovFrom, ovTo).map(m => {
+      const v = map[m] || { income: 0, expense: 0 };
+      return { month: m, ...v, net: v.income - v.expense };
+    });
   }, [filteredTxns, ovFrom, ovTo, rates, baseCurrency]);
   const categories = useMemo(() => {
     const m: Record<string, number> = {};
@@ -501,7 +541,7 @@ export default function App() {
     setTxns(list => list.map(t => (t.id === id ? { ...t, ...patch } : t)));
   }
   const deleteTxn = (id: string) => setTxns(s => s.filter(t => t.id !== id));
-  const [editing, setEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const addBudget = (category: string, limit: number) => setBudgets(b => [{ id: uid(), category, monthlyLimit: limit, isBusiness: scopeBusiness }, ...b]);
   const addRule = (rule: Omit<Rule,"id"|"isBusiness">) => setRules(r => [{ id: uid(), isBusiness: scopeBusiness, ...rule }, ...r]);
   const addRecurring = (p: Omit<Recurring, "id" | "isBusiness">) => setRecurrings(r => [{ id: uid(), isBusiness: scopeBusiness, ...p }, ...r]);
@@ -521,6 +561,13 @@ export default function App() {
           border-color: #334155;
         }
         .dark option { background-color: #0f172a; color: #e5e7eb; }
+        :root:not(.dark) input,
+        :root:not(.dark) select,
+        :root:not(.dark) textarea {
+          background-color: #ffffff;
+          color: #0f172a;
+          border-color: #cbd5e1;
+        }
       `}</style>
       {locked && (
         <div className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100 px-4 py-2 text-sm">
@@ -592,10 +639,12 @@ export default function App() {
                         <stop offset="95%" stopOpacity={0} stopColor="#ef4444" />
                       </linearGradient>
                     </defs>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={rc.grid} />
                       <XAxis
                         dataKey="month"
+                        type="category"
                         allowDuplicatedCategory={false}
+                        minTickGap={8}
                         tickFormatter={fmtMonth}
                         tick={{ fill: rc.text }}
                         axisLine={{ stroke: rc.axis }}
@@ -613,8 +662,8 @@ export default function App() {
                         contentStyle={{ backgroundColor: rc.tipBg, borderColor: rc.tipBd, color: rc.text }}
                         itemStyle={{ color: rc.text }}
                         labelStyle={{ color: rc.text }}
-                      /><Legend wrapperStyle={{ color: rc.text }} />
-                      <Tooltip formatter={(v:number)=>C(v, baseCurrency)} /><Legend />
+                      />
+                      <Legend wrapperStyle={{ color: rc.text }} />
                       <Area type="monotone" dataKey="income" stroke="#16a34a" fillOpacity={1} fill="url(#inc)" name="Income" />
                       <Area type="monotone" dataKey="expense" stroke="#ef4444" fillOpacity={1} fill="url(#exp)" name="Expenses" />
                       <Line type="monotone" dataKey="net" stroke={dark ? "#fff" : "#0f172a"} name="Net" />
@@ -655,7 +704,9 @@ export default function App() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={categories} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
-                        {categories.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                        {categories.map((slice, i) => (
+                          <Cell key={i} fill={catColorMap[slice.name] || CAT_COLORS[i % CAT_COLORS.length]} />
+                        ))}
                       </Pie>
                       <Tooltip
                         formatter={(v:number)=>C(v,baseCurrency)}
@@ -681,8 +732,8 @@ export default function App() {
                       </div>
                       <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
                         <div
-                          className={`${b.pct>=90?"bg-rose-500":b.pct>=70?"bg-amber-400":"bg-emerald-500"} h-full`}
-                          style={{width:`${b.pct}%`}}
+                          className="h-full"
+                          style={{ width: `${b.pct}%`, backgroundColor: catColorMap[b.category] || "#22c55e" }}
                           title={`${b.pct}%`}
                           role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={b.pct} aria-label={`${b.category} budget used`}
                         />
@@ -721,43 +772,117 @@ export default function App() {
               </div>
               <div className="overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-left">Category</th><th className="px-3 py-2 text-left">Account</th><th className="px-3 py-2 text-left">Tags</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2" /></tr></thead>
+                  <thead className="bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                    <tr>
+                      {[
+                        { key: "date", label: "Date" },
+                        { key: "description", label: "Description" },
+                        { key: "category", label: "Category" },
+                        { key: "account", label: "Account" },
+                        { key: "tags", label: "Tags", noSort: true },
+                        { key: "amount", label: "Amount", alignRight: true },
+                        { key: "_", label: "", noSort: true },
+                      ].map(col => {
+                        if (col.noSort) {
+                          return (
+                            <th key={col.key} className={`px-3 py-2 ${col.alignRight ? "text-right" : "text-left"}`}>
+                              {col.label}
+                            </th>
+                          );
+                        }
+                        const isActive = sortBy === (col.key as any);
+                        const dirArrow = isActive ? (sortDir === "asc" ? "▲" : "▼") : "";
+                        return (
+                          <th
+                            key={col.key}
+                            role="button"
+                            aria-sort={isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                            onClick={() => {
+                              setSortBy(col.key as any);
+                              setSortDir(prev => (isActive ? (prev === "asc" ? "desc" : "asc") : "asc"));
+                            }}
+                            className={`px-3 py-2 ${col.alignRight ? "text-right" : "text-left"} select-none cursor-pointer`}
+                            title="Click to sort"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label} <span className="opacity-60">{dirArrow}</span>
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
                   <tbody>
-                    {filteredTxns.filter(t => {
-                      if (!filterText.trim()) return true;
-                      const f = filterText.toLowerCase();
-                      const acct = accounts.find(a => a.id === t.account)?.name || "";
-                      const tags = (t.tags || []).join(",");
-                      return [t.description, t.category, acct, tags, t.note || ""].some(s => String(s).toLowerCase().includes(f));
-                    }).map(t => (
+                    {visibleTxns.map(t => (
                       <tr key={t.id} className="border-t border-slate-200 dark:border-slate-700">
                         <td className="px-3 py-2 whitespace-nowrap">{t.date}</td>
                         <td className="px-3 py-2">{t.description}</td>
                         <td className="px-3 py-2">{t.category}</td>
                         <td className="px-3 py-2">{accounts.find(a => a.id === t.account)?.name || "?"}</td>
-                        <td className="px-3 py-2">{(t.tags || []).map(x => <span key={x} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 mr-1">{x}</span>)}</td>
-                        <td className={`px-3 py-2 text-right font-medium ${t.amount >= 0 ? "text-emerald-600" : "text-rose-500"}`}>{t.amount >= 0 ? "+" : "-"}{C(Math.abs(t.amount), currencyForAccount(t.account))}</td>
+                        <td className="px-3 py-2">
+                          {(t.tags || []).map(x => (
+                            <span key={x} className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 mr-1">
+                              {x}
+                            </span>
+                          ))}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-medium ${
+                            t.amount >= 0 ? "text-emerald-600" : "text-rose-500"
+                          }`}
+                        >
+                          {t.amount >= 0 ? "+" : "-"}
+                          {C(Math.abs(t.amount), currencyForAccount(t.account))}
+                        </td>
                         <td className="px-3 py-2 text-right flex gap-2">
-                          <button className="underline" onClick={()=>setEditing(true)}>Edit</button>
-                          <button className="text-rose-500 underline" aria-label="Delete transaction" onClick={() => deleteTxn(t.id)}>Delete</button>
-                          <SplitButton txn={t} categories={categoriesList} onSplit={(parts)=> {
-                            const sum = parts.reduce((a,b)=> a + b.amount, 0);
-                            if (Math.round(sum*100)!==Math.round(t.amount*100)) { alert("Split amounts must sum to the original amount."); return; }
-                            setTxns(all => [ ...parts.map(p => ({ id: uid(), date: t.date, description: `${t.description} (split)`, category: p.category, amount: p.amount, account: t.account, isBusiness: t.isBusiness })), ...all.filter(x => x.id !== t.id) ]);
-                          }} />
-                          <EditTxnModal
-                            open={editing}
-                            onClose={()=>setEditing(false)}
+                          <button className="underline" onClick={() => setEditingId(t.id)}>
+                            Edit
+                          </button>
+                          <button
+                            className="text-rose-500 underline"
+                            aria-label="Delete transaction"
+                            onClick={() => deleteTxn(t.id)}
+                          >
+                            Delete
+                          </button>
+                          <SplitButton
                             txn={t}
-                            accounts={scopedAccounts}
                             categories={categoriesList}
-                            onSave={(patch)=>updateTxn(t.id, patch)}
+                            onSplit={(parts) => {
+                              const sum = parts.reduce((a, b) => a + b.amount, 0);
+                              if (Math.round(sum * 100) !== Math.round(t.amount * 100)) {
+                                alert("Split amounts must sum to the original amount.");
+                                return;
+                              }
+                              setTxns((all) => [
+                                ...parts.map((p) => ({
+                                  id: uid(),
+                                  date: t.date,
+                                  description: `${t.description} (split)`,
+                                  category: p.category,
+                                  amount: p.amount,
+                                  account: t.account,
+                                  isBusiness: t.isBusiness,
+                                })),
+                                ...all.filter((x) => x.id !== t.id),
+                              ]);
+                            }}
                           />
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {editingId && (
+                  <EditTxnModal
+                    open={true}
+                    onClose={()=>setEditingId(null)}
+                    txn={txns.find(x => x.id === editingId)!}
+                    accounts={scopedAccounts}
+                    categories={categoriesList}
+                    onSave={(patch)=> updateTxn(editingId, patch)}
+                  />
+                )}
               </div>
             </Card>
           </section>
@@ -1183,8 +1308,8 @@ function SplitButton({ txn, categories, onSplit }: { txn: Txn; categories: strin
     <>
       <button className="underline" onClick={()=>setOpen(true)}>Split</button>
       {open && (
-        <div className="fixed inset-0 bg-black/40 grid place-items-center p-4 z-50" role="dialog" aria-modal="true">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-4 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm grid place-items-center p-4 z-50" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-4 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 shadow-2xl ring-1 ring-black/5">
             <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Split transaction</h3><button onClick={()=>setOpen(false)}>✕</button></div>
             <div className="text-xs opacity-70 mb-2">Original amount: {txn.amount}</div>
             <div className="space-y-2 max-h-64 overflow-auto">
@@ -1222,10 +1347,20 @@ function EditTxnModal({
   const [account, setAccount] = useState(txn.account);
   const [tags, setTags] = useState((txn.tags || []).join(", "));
   const [note, setNote] = useState(txn.note || "");
+  useEffect(() => {
+    if (!open) return;
+    setDate(txn.date);
+    setDescription(txn.description);
+    setCategory(txn.category);
+    setAmount(String(txn.amount));
+    setAccount(txn.account);
+    setTags((txn.tags || []).join(", "));
+    setNote(txn.note || "");
+  }, [open, txn]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 bg-black/40 grid place-items-center p-4 z-50" role="dialog" aria-modal="true">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-4 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm grid place-items-center p-4 z-50" role="dialog" aria-modal="true">
+      <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-4 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 shadow-2xl ring-1 ring-black/5">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold">Edit transaction</h3>
           <button onClick={onClose}>✕</button>
@@ -1358,8 +1493,28 @@ function parsePattern(input: string): number[] {
   return input.split(/[,\s]+/).map(x => Number(x)).filter(x => Number.isFinite(x));
 }
 const addMonthsISO = (iso: string, months: number) => { const d = new Date(iso); d.setMonth(d.getMonth()+months); return d.toISOString().slice(0,10); };
-const fmtMonth = (ym: string) =>
-  new Date(`${ym}-01`).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+const fmtMonth = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, (m - 1), 1);
+  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+};
+const addYM = (ym: string, delta: number) => {
+  const [y, m] = ym.split("-").map(Number); // m = 1..12
+  const total = y * 12 + (m - 1) + delta;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
+};
+const monthsBetween = (fromIso: string, toExclusiveIso: string) => {
+  const out: string[] = [];
+  let cur = fromIso.slice(0, 7);
+  const end = toExclusiveIso.slice(0, 7);
+  while (cur < end) {
+    out.push(cur);
+    cur = addYM(cur, 1);
+  }
+  return out;
+};
 type SavingsPoint = { month: string; balance: number; contrib: number; interest: number; totalContrib: number };
 function SavingsPlanner({ baseCurrency, scenarios, setScenarios, side, setChosen }:{
   baseCurrency: string; scenarios: Scenario[]; setScenarios: React.Dispatch<React.SetStateAction<Scenario[]>>;
