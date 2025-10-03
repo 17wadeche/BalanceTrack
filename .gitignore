@@ -10,7 +10,6 @@ release/
 out/
 build/
 coverage/
-electron/
 release-msix/
 web/
 *.log
