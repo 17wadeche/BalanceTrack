@@ -1,0 +1,41 @@
+name: Windows AppX Builds
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "package.json"
+      - "src/**"
+      - "dist-electron/**"
+      - "build-scripts/**"
+      - ".github/workflows/windows-appx.yml"
+jobs:
+  build-appx:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [ x64, arm64 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install deps
+        run: npm ci
+      - name: Build icons/assets
+        run: npm run assets:win
+      - name: Disable code signing
+        run: |
+          echo "CSC_LINK=" >> $env:GITHUB_ENV
+          echo "CSC_KEY_PASSWORD=" >> $env:GITHUB_ENV
+      - name: Build APPX (${{ matrix.arch }})
+        run: npx electron-builder --win appx --${{ matrix.arch }}
+      - name: Upload artifact (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: balancetrack-appx-${{ matrix.arch }}
+          path: release-msix\*.appx
